@@ -1,10 +1,28 @@
 --[[ ==========================================================================
-     N O V A   V D   |   Violence District Toolkit            v2.2
+     N O V A   V D   |   Violence District Toolkit            v2.6
      --------------------------------------------------------------------------
      File    : nova_vd_v1.lua      (file baru, engine sendiri)
      Engine  : vanilla UI buatan sendiri -- TANPA Rayfield, TANPA loadstring
      Target  : [BUTCHER] Violence District      (PlaceId 93978595733734)
      Platform: Mobile (Delta / Hydrogen) + PC (Xeno / Wave / Swift)
+
+     v2.6 = 8 BIT CROWN (cosmetic): port 1:1 dari asset katalog Roblox
+            "8-Bit Royal Crown" (assetId 10159600649) -- MeshId/TextureId asli
+            + VFX api 8bit, ditempel ke Head pakai weld. Slider scale/offset
+            biar bisa dipas-pasin, dan otomatis nempel lagi tiap respawn.
+
+     v2.5 = ITEM USER generik: pakai item apa pun dari Remotes.Items /
+            Backpack tanpa hardcode (nama diisi dari tombol Ganti Item /
+            Scan Item), + scanner yang nge-dump nama tiap item & remote-nya
+            ke clipboard.
+
+     v2.4 = sticky group bar (nama grup nempel di atas area scroll) + tab
+            pertama otomatis kebuka saat load (sebelumnya panel kosong sampai
+            di-tap).
+
+     v2.3 = UI pass: header grup bisa di-tap buat lipat/buka, garis pemisah
+            antar grup, tab ESP + Visual dikasih header pembuka, jarak antar
+            item lebih lega, tab bar/panel lebih enak di layar HP.
 
      v2.2 = DASH LOCK beneran (port PANDU Hub): camera aim-lock ke survivor
             terdekat -- trigger klik kanan (PC) / keybind V / tombol move2 (mobile),
@@ -215,6 +233,17 @@ local CFG = {
 	DashLockHold   = false,
 	DashLockBtn    = true,
 	DashLockKey    = Enum.KeyCode.V,
+	-- Item generik: nembak item dari Remotes.Items / Backpack tanpa hardcode.
+	-- Nama diisi dari tombol "Ganti Item" atau hasil "Scan Item".
+	UseItem        = false,
+	UseItemName    = "",
+	UseItemRate    = 0.5,
+	UseItemEquip   = true,
+	-- 8 Bit Crown: cosmetic lokal (asset katalog "8-Bit Royal Crown")
+	CrownOn        = false,
+	CrownScale     = 1,
+	CrownYOff      = 0,
+	CrownVfx       = true,
 	KorlessMorph   = false,
 	SkipEndscreen  = false,
 	FakeName       = "NOVA",
@@ -598,7 +627,7 @@ do
 	sub.Size = UDim2.new(0, 300, 1, 0)
 	sub.Position = UDim2.new(0, 100, 0, 0)
 	sub.BackgroundTransparency = 1
-	sub.Text = "Violence District  ·  v2.2"
+	sub.Text = "Violence District  ·  v2.6"
 	sub.TextColor3 = C.dim
 	sub.TextSize = 12
 	sub.Font = Enum.Font.GothamMedium
@@ -650,6 +679,7 @@ do
 	NOV.ui.pages = {}
 
 	local pagesHolder  -- forward declaration: dipakai applyResponsive()
+	local sticky       -- bar nama grup yang nempel di atas (sticky header)
 	local fab          -- tombol mengambang buka ulang
 
 	-- Layout adaptif. Sempit (= HP) -> tab jadi baris horizontal + window pas layar.
@@ -688,6 +718,10 @@ do
 				p.Size = UDim2.new(1, -14, 1, -6)
 				p.Position = UDim2.new(0, 7, 0, 3)
 			end
+			if sticky then
+				sticky.Size = UDim2.new(1, -14, 0, 20)
+				sticky.Position = UDim2.new(0, 7, 0, 3)
+			end
 
 			sub.Visible = false
 			title.Size = UDim2.new(0, 160, 1, 0)
@@ -721,6 +755,10 @@ do
 				p.Size = UDim2.new(1, -20, 1, -20)
 				p.Position = UDim2.new(0, 10, 0, 10)
 			end
+			if sticky then
+				sticky.Size = UDim2.new(1, -20, 0, 20)
+				sticky.Position = UDim2.new(0, 10, 0, 10)
+			end
 
 			sub.Visible = true
 			title.Size = UDim2.new(0, 300, 1, 0)
@@ -741,6 +779,88 @@ do
 	pagesHolder.Position = UDim2.new(0, 152, 0, 42)
 	pagesHolder.BackgroundTransparency = 1
 	pagesHolder.Parent = win
+
+	--======== STICKY GROUP BAR ========
+	-- Bar yang nempel di atas area scroll dan nampilin nama grup yang sedang
+	-- kelihatan, jadi header yang kepotong tepi atas tetap kebaca namanya.
+	NOV.ui._groups = {}
+	sticky = Instance.new("Frame")
+	sticky.Name = "NOVA_Sticky"
+	sticky.Size = UDim2.new(1, -20, 0, 20)
+	sticky.Position = UDim2.new(0, 10, 0, 10)
+	sticky.BackgroundColor3 = C.panel
+	sticky.BackgroundTransparency = 0.05
+	sticky.BorderSizePixel = 0
+	sticky.Visible = true
+	sticky.ZIndex = 5
+	sticky.Parent = pagesHolder
+	corner(sticky, 6)
+	local stickyLine = Instance.new("Frame")
+	stickyLine.Size = UDim2.new(1, 0, 0, 1)
+	stickyLine.Position = UDim2.new(0, 0, 1, 0)
+	stickyLine.BackgroundColor3 = C.stroke
+	stickyLine.BorderSizePixel = 0
+	stickyLine.ZIndex = 6
+	stickyLine.Parent = sticky
+	local stickyTick = Instance.new("Frame")
+	stickyTick.Size = UDim2.new(0, 3, 0, 10)
+	stickyTick.Position = UDim2.new(0, 0, 0.5, -5)
+	stickyTick.BackgroundColor3 = C.accent
+	stickyTick.BorderSizePixel = 0
+	stickyTick.ZIndex = 6
+	stickyTick.Parent = sticky
+	corner(stickyTick, 99)
+	local stickyLbl = Instance.new("TextLabel")
+	stickyLbl.Size = UDim2.new(1, -24, 1, 0)
+	stickyLbl.Position = UDim2.new(0, 10, 0, 0)
+	stickyLbl.BackgroundTransparency = 1
+	stickyLbl.Text = ""
+	stickyLbl.TextColor3 = C.accent
+	stickyLbl.TextSize = 10
+	stickyLbl.Font = Enum.Font.GothamBold
+	stickyLbl.TextXAlignment = Enum.TextXAlignment.Left
+	stickyLbl.TextYAlignment = Enum.TextYAlignment.Center
+	stickyLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	stickyLbl.ZIndex = 6
+	stickyLbl.Parent = sticky
+	NOV.ui.sticky = sticky
+	NOV.ui.stickyLbl = stickyLbl
+
+	-- tick 20 Hz: cari grup yang paling atas di halaman yang sedang kelihatan
+	local lastSticky = nil
+	NOV.ui.stickyTick = function()
+		local cur
+		for _, t in ipairs(NOV.ui.tabs) do
+			if t.page.Visible then cur = t.page break end
+		end
+		if not cur then return end
+		local base = cur.AbsolutePosition.Y
+		local off = cur.CanvasPosition.Y
+		local best, bestY
+		for _, g in ipairs(NOV.ui._groups) do
+			if g.page == cur and g.header.Parent then
+				local cy = (g.header.AbsolutePosition.Y - base) + off
+				if cy <= off + 6 then
+					if not best or cy >= bestY then best, bestY = g.text, cy end
+				end
+			end
+		end
+		if not best then
+			-- belum lewat header pertama -> pakai grup pertama di halaman ini
+			local lowest
+			for _, g in ipairs(NOV.ui._groups) do
+				if g.page == cur and g.header.Parent then
+					local cy = (g.header.AbsolutePosition.Y - base) + off
+					if not lowest or cy < lowest then lowest, best = cy, g.text end
+				end
+			end
+		end
+		best = best or ""
+		if best ~= lastSticky then
+			lastSticky = best
+			stickyLbl.Text = best
+		end
+	end
 
 	NOV.ui.createTab = function(name, short)
 		local btn = Instance.new("TextButton")
@@ -788,10 +908,11 @@ do
 		-- ruang bawah biar item terakhir nggak nempel scrollbar
 		local pad = Instance.new("UIPadding")
 		pad.PaddingBottom = UDim.new(0, 14)
+		pad.PaddingTop = UDim.new(0, 24)   -- ruang buat sticky group bar
 		pad.Parent = page
 		page.Parent = pagesHolder
 		local lay = Instance.new("UIListLayout")
-		lay.Padding = UDim.new(0, 6)
+		lay.Padding = UDim.new(0, TOUCH and 7 or 6)
 		lay.SortOrder = Enum.SortOrder.LayoutOrder
 		lay.Parent = page
 
@@ -799,7 +920,8 @@ do
 		table.insert(NOV.ui.tabs, tab)
 		table.insert(NOV.ui.pages, page)
 
-		btn.MouseButton1Click:Connect(function()
+		-- satu jalur aktivasi, dipakai klik tab DAN pemilihan tab pertama
+		tab.activate = function()
 			for _, t in ipairs(NOV.ui.tabs) do
 				t.page.Visible = false
 				t.dot.Visible = false
@@ -810,33 +932,84 @@ do
 			dot.Visible = true
 			btn.BackgroundColor3 = C.panel2
 			lbl.TextColor3 = C.text
-		end)
+		end
+		btn.MouseButton1Click:Connect(tab.activate)
 
 		return tab
 	end
 
 	--======== COMPONENTS ========
+	-- Header grup. Tap = lipat/buka isi grup (biar tab panjang nggak perlu
+	-- di-scroll jauh di layar HP). Semua item setelah header masuk ke grup ini.
+	NOV.ui._curGroup = nil
 	NOV.ui.section = function(page, text)
-		local f = Instance.new("Frame")
-		f.Size = UDim2.new(1, 0, 0, TOUCH and 26 or 22)
-		f.BackgroundTransparency = 1
-		f.Parent = page
+		local secHdr = Instance.new("TextButton")
+		secHdr.Size = UDim2.new(1, 0, 0, TOUCH and 34 or 28)
+		secHdr.BackgroundTransparency = 1
+		secHdr.Text = ""
+		secHdr.AutoButtonColor = false
+		secHdr.Parent = page
+
+		-- garis pemisah di ATAS header (jadi batas antar grup, bukan di bawah)
 		local line = Instance.new("Frame")
 		line.Size = UDim2.new(1, 0, 0, 1)
-		line.Position = UDim2.new(0, 0, 1, -2)
+		line.Position = UDim2.new(0, 0, 0, 0)
 		line.BackgroundColor3 = C.stroke
 		line.BorderSizePixel = 0
-		line.Parent = f
+		line.Parent = secHdr
+
+		local tick = Instance.new("Frame")
+		tick.Size = UDim2.new(0, 3, 0, 11)
+		tick.Position = UDim2.new(0, 0, 1, -15)
+		tick.BackgroundColor3 = C.accent
+		tick.BorderSizePixel = 0
+		tick.Parent = secHdr
+		corner(tick, 99)
+
 		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, 0, 1, 0)
+		lbl.Size = UDim2.new(1, -36, 1, -10)
+		lbl.Position = UDim2.new(0, 10, 0, 10)
 		lbl.BackgroundTransparency = 1
 		lbl.Text = string.upper(text)
 		lbl.TextColor3 = C.accent
 		lbl.TextSize = 11
 		lbl.Font = Enum.Font.GothamBold
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.Parent = f
-		return f
+		lbl.TextYAlignment = Enum.TextYAlignment.Center
+		lbl.TextTruncate = Enum.TextTruncate.AtEnd
+		lbl.Parent = secHdr
+
+		local chev = Instance.new("TextLabel")
+		chev.Size = UDim2.new(0, 22, 1, 0)
+		chev.Position = UDim2.new(1, -24, 0, 0)
+		chev.BackgroundTransparency = 1
+		chev.Text = "v"
+		chev.TextColor3 = C.dim
+		chev.TextSize = 13
+		chev.Font = Enum.Font.GothamBold
+		chev.TextYAlignment = Enum.TextYAlignment.Center
+		chev.Parent = secHdr
+
+		local group = { items = {}, open = true }
+		NOV.ui._curGroup = group
+		table.insert(NOV.ui._groups, { page = page, header = secHdr, text = string.upper(text) })
+
+		secHdr.MouseButton1Click:Connect(function()
+			group.open = not group.open
+			for _, it in ipairs(group.items) do
+				it.Visible = group.open
+			end
+			chev.Text = group.open and "v" or ">"
+			lbl.TextColor3 = group.open and C.accent or C.dim
+		end)
+		return secHdr
+	end
+
+	-- item yang dibuat setelah sebuah header otomatis ikut grup itu
+	local function reg(el)
+		local g = NOV.ui._curGroup
+		if g then table.insert(g.items, el) end
+		return el
 	end
 
 	NOV.ui.label = function(page, text, color)
@@ -850,7 +1023,7 @@ do
 		l.TextWrapped = true
 		l.TextXAlignment = Enum.TextXAlignment.Left
 		l.Parent = page
-		return l
+		return reg(l)
 	end
 
 	NOV.ui.reg = {}
@@ -941,6 +1114,7 @@ do
 			end
 		end)
 
+		reg(btn)
 		api.set(state)
 		api.key = type(key) == "string" and key or nil
 		if type(key) == "string" then
@@ -1057,6 +1231,7 @@ do
 		end)
 
 		paint()
+		reg(f)
 		return {
 			get = function() return val end,
 			set = function(v) val = math.clamp(v, min, max); paint(); if callback then pcall(callback, val) end end,
@@ -1075,6 +1250,7 @@ do
 		btn.Parent = page
 		corner(btn, 7)
 		local st = stroke(btn)
+		reg(btn)
 		btn.MouseEnter:Connect(function()
 			TweenService:Create(st, TweenInfo.new(0.12), { Color = C.accent }):Play()
 		end)
@@ -2655,7 +2831,7 @@ do
 			NextKiller = false, NextMap = false, BypassGate = false, InstantTPGate = false,
 			SpearSilent = false, PerfectLanding = false, AdrenalineRush = false,
 			StreamerMode = false, CounterParry = false, InfCorrupt = false, DashLock = false,
-			KorlessMorph = false, SkipEndscreen = false,
+			KorlessMorph = false, SkipEndscreen = false, CrownOn = false,
 		}
 		for k, v in pairs(defaults) do NOV.setCfg(k, v) end
 		NOV.msg("Semua fitur hasil port direset ke OFF.")
@@ -2856,6 +3032,115 @@ do
 			w.Parent = mp
 		end)
 		NOV.msg(ok and "Korless morph ON." or "Korless gagal (bentuk R15?)")
+	end
+
+	--======== 8 BIT CROWN (cosmetic) ========
+	-- Port 1:1 dari asset katalog "8-Bit Royal Crown" (assetId 10159600649,
+	-- milik akun Roblox). Isi file .rbxm-nya dibaca langsung:
+	--   Part "Handle" + SpecialMesh   MeshId    rbxassetid://10138606900
+	--                                 TextureId rbxassetid://10138606949
+	--   ParticleEmitter "8bit_fire"   Texture   rbxassetid://10126369396
+	--   Handle: Transparency 0, CanCollide false, ukuran nyaris nol.
+	-- Game ini nge-morph karakter, jadi aksesori avatar bawaan nggak kelihatan
+	-- -- makanya kita bangun ulang lokal lalu tempel ke Head pakai weld.
+	local CROWN = {
+		MESH = "rbxassetid://10138606900",
+		TEX  = "rbxassetid://10138606949",
+		VFX  = "rbxassetid://10126369396",
+		TAG  = "NOVA_Crown",
+	}
+	NOV.CROWN = CROWN
+
+	local function crownChar(plr)
+		plr = plr or lp
+		local char = plr.Character
+		return char, char and char:FindFirstChild("Head")
+	end
+
+	NOV.crownDrop = function(plr)
+		local char = crownChar(plr)
+		if not char then return end
+		local old = char:FindFirstChild(CROWN.TAG)
+		if old then pcall(function() old:Destroy() end) end
+	end
+
+	-- bangun + tempel. Aman dipanggil ulang (yang lama dihapus dulu).
+	NOV.crownBuild = function(plr)
+		local char, head = crownChar(plr)
+		if not head then return false end
+		NOV.crownDrop(plr)
+
+		local scale = math.clamp(tonumber(CFG.CrownScale) or 1, 0.2, 4)
+		local yoff  = tonumber(CFG.CrownYOff) or 0
+
+		local handle = Instance.new("Part")
+		handle.Name = CROWN.TAG
+		handle.Size = Vector3.new(0.05, 0.05, 0.05)
+		handle.Transparency = 0
+		handle.CanCollide = false
+		handle.Massless = true
+		handle.Anchored = false
+		pcall(function()
+			handle.CanQuery = false
+			handle.CanTouch = false
+		end)
+
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = CROWN.MESH
+		mesh.TextureId = CROWN.TEX
+		mesh.Offset = Vector3.new(0, 0, 0)
+		mesh.Scale = Vector3.new(scale, scale, scale)
+		mesh.Parent = handle
+
+		local att = Instance.new("Attachment")
+		att.Name = "HatAttachment"
+		att.Parent = handle
+
+		if CFG.CrownVfx then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Name = "8bit_fire"
+			pe.Texture = CROWN.VFX
+			pe.LockedToPart = true
+			pe.LightEmission = 1
+			pe.Rate = 14
+			pe.Lifetime = NumberRange.new(0.35, 0.6)
+			pe.Speed = NumberRange.new(0.4, 1.2)
+			pe.Size = NumberSequence.new(0.3)
+			pe.Transparency = NumberSequence.new(0.2)
+			pe.Rotation = NumberRange.new(-90, 90)
+			pe.RotSpeed = NumberRange.new(-60, 60)
+			pe.Parent = handle
+		end
+
+		-- taruh tepat di atas ubun-ubun, lalu kunci relatif ke Head
+		handle.CFrame = head.CFrame * CFrame.new(0, head.Size.Y * 0.5 + yoff, 0)
+		handle.Parent = char
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = head
+		weld.Part1 = handle
+		weld.Parent = handle
+		return true
+	end
+
+	NOV.crown = function(on)
+		CFG.CrownOn = on
+		if not on then
+			NOV.crownDrop(lp)
+			NOV.msg("8 Bit Crown OFF.")
+			return
+		end
+		local ok = NOV.crownBuild(lp)
+		NOV.msg(ok and "8 Bit Crown ON -- nempel di kepala."
+			or "8 Bit Crown gagal: karakter/Head belum ada.")
+	end
+
+	-- dipakai slider + toggle VFX: bangun ulang tanpa nginjak switch utama
+	NOV.crownRefresh = function()
+		if not CFG.CrownOn then return end
+		if not NOV.crownBuild(lp) then
+			NOV.msg("8 Bit Crown: Head belum ada (tunggu spawn).")
+		end
 	end
 
 	--======== COUNTER / ANTI PARRY (killer) ========
@@ -3211,6 +3496,175 @@ do
 	end
 end
 
+--===================== [ 9f. ITEM USER (generik) ] ========================
+-- Fire remote item apa pun dari Remotes.Items / Backpack tanpa hardcode
+-- satu-satu. Buat item yang belum ada di resolver (contoh: "8 Bit Crown").
+-- Nama dicocokkan setelah dinormalisasi: huruf kecil, spasi / _ / - / . dibuang,
+-- jadi "8 Bit Crown", "8BitCrown", "8-bit-crown" semuanya kena.
+do
+	local R = NOV.remotes
+
+	local function norm(x)
+		return (tostring(x):lower():gsub("[%s_%-%./]", ""))
+	end
+	NOV.itemNorm = norm
+
+	-- kandidat node item: Remotes.Items.<X>, Backpack, dan tool yang lagi dipegang
+	local function candidates()
+		local out = {}
+		local items = R.root and R.root:FindFirstChild("Items")
+		if items then
+			for _, c in ipairs(items:GetChildren()) do
+				table.insert(out, { name = c.Name, node = c, where = "Remotes.Items" })
+			end
+		end
+		local pack = lp:FindFirstChild("Backpack")
+		if pack then
+			for _, c in ipairs(pack:GetChildren()) do
+				if c:IsA("Tool") then
+					table.insert(out, { name = c.Name, node = c, where = "Backpack" })
+				end
+			end
+		end
+		local char = lp.Character
+		if char then
+			for _, c in ipairs(char:GetChildren()) do
+				if c:IsA("Tool") then
+					table.insert(out, { name = c.Name, node = c, where = "Equipped" })
+				end
+			end
+		end
+		return out
+	end
+	NOV.itemCandidates = candidates
+
+	local function remotesOf(node)
+		local out = {}
+		if not node then return out end
+		for _, d in ipairs(node:GetDescendants()) do
+			if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
+				table.insert(out, d)
+			end
+		end
+		return out
+	end
+	NOV.itemRemotes = remotesOf
+
+	-- exact match dulu, baru substring dua arah
+	NOV.itemFind = function()
+		local want = norm(CFG.UseItemName or "")
+		if want == "" then return nil end
+		local list = candidates()
+		for _, c in ipairs(list) do
+			if norm(c.name) == want then return c end
+		end
+		for _, c in ipairs(list) do
+			local k = norm(c.name)
+			if string.find(k, want, 1, true) or string.find(want, k, 1, true) then return c end
+		end
+		return nil
+	end
+
+	NOV.itemNames = function()
+		local seen, out = {}, {}
+		for _, c in ipairs(candidates()) do
+			local k = norm(c.name)
+			if not seen[k] then seen[k] = true; table.insert(out, c.name) end
+		end
+		table.sort(out)
+		return out
+	end
+
+	NOV.itemCycle = function()
+		local names = NOV.itemNames()
+		if #names == 0 then
+			NOV.msg("Item tidak ketemu (Backpack & Remotes.Items kosong).")
+			return nil
+		end
+		local cur, idx = norm(CFG.UseItemName or ""), 0
+		for i, n in ipairs(names) do
+			if norm(n) == cur then idx = i break end
+		end
+		local pick = names[(idx % #names) + 1]
+		CFG.UseItemName = pick
+		NOV.msg("Item dipilih: " .. pick)
+		return pick
+	end
+
+	NOV.itemDump = function()
+		local lines = { "NOVA VD - ITEM DUMP  (PlaceId " .. tostring(game.PlaceId) .. ")" }
+		local list = candidates()
+		if #list == 0 then table.insert(lines, "(tidak ada item di Remotes.Items / Backpack)") end
+		for _, c in ipairs(list) do
+			local rn = {}
+			for _, r in ipairs(remotesOf(c.node)) do
+				table.insert(rn, r.Name .. "[" .. r.ClassName .. "]")
+			end
+			table.insert(lines, string.format("%-24s %-14s remotes: %s",
+				c.name, c.where, #rn > 0 and table.concat(rn, ", ") or "-"))
+		end
+		local text = table.concat(lines, "\n")
+		pcall(function() setclipboard(text) end)
+		print(text)
+		NOV.msg(string.format("%d item di-dump ke clipboard.", #list))
+		return text
+	end
+
+	NOV.useItemStep = function()
+		if not CFG.UseItem then return end
+		if CFG.UseItemName == nil or CFG.UseItemName == "" then return end
+		local hum = NOV.hum()
+		if not hum or hum.Health <= 0 then return end
+		local now = tick()
+		if NOV.state.lastItem and now - NOV.state.lastItem < math.max(0.1, tonumber(CFG.UseItemRate) or 0.5) then
+			return
+		end
+
+		local c = NOV.itemFind()
+		if not c then
+			if NOV.state.itemMiss ~= CFG.UseItemName then
+				NOV.state.itemMiss = CFG.UseItemName
+				NOV.msg("Item \"" .. tostring(CFG.UseItemName) .. "\" tidak ketemu - tekan Ganti Item / Scan Item.")
+			end
+			return
+		end
+		NOV.state.itemMiss = nil
+
+		-- kalau masih di backpack, pegang dulu
+		if CFG.UseItemEquip and c.where == "Backpack" then
+			pcall(function() hum:EquipTool(c.node) end)
+			c = NOV.itemFind() or c
+		end
+
+		local rs = remotesOf(c.node)
+		if #rs == 0 then
+			-- node-nya tool di backpack; remote aslinya ada di Remotes.Items dengan nama sama
+			local items = R.root and R.root:FindFirstChild("Items")
+			local mirror = items and items:FindFirstChild(c.name)
+			rs = remotesOf(mirror)
+		end
+		if #rs == 0 then
+			if NOV.state.itemNoRemote ~= c.name then
+				NOV.state.itemNoRemote = c.name
+				NOV.msg("Item \"" .. c.name .. "\" ketemu tapi tidak punya remote - tekan Scan Item.")
+			end
+			NOV.state.lastItem = now
+			return
+		end
+
+		NOV.state.lastItem = now
+		for _, r in ipairs(rs) do
+			pcall(function()
+				if r:IsA("RemoteEvent") then
+					r:FireServer()
+				else
+					r:InvokeServer()
+				end
+			end)
+		end
+	end
+end
+
 --===================== [ 10. MOVEMENT ] ===================================
 do
 	local moveBV, moveBG
@@ -3544,6 +3998,7 @@ do
 	U.button(T.main.page, "Unload Script", NOV.unload)
 
 	--======== ESP ========
+	U.section(T.esp.page, "Pemain")
 	U.toggle(T.esp.page, "ESP Pemain", "EspPlayers", function(v)
 		CFG.EspPlayers = v
 		-- kalau semua sub-option mati, nyalakan set dasar biar ESP-nya kelihatan
@@ -3724,6 +4179,23 @@ do
 	local genStatus = U.label(T.auto.page, "tekan Scan Ulang Map")
 	NOV.ui.genStatus = genStatus
 
+	U.section(T.auto.page, "Item")
+	U.toggle(T.auto.page, "Pakai Item (generik)", "UseItem", function(v)
+		CFG.UseItem = v
+		if v then NOV.msg("Pakai item: " .. tostring(CFG.UseItemName)) end
+	end)
+	local itemLbl = U.label(T.auto.page, "Item: " .. tostring(CFG.UseItemName))
+	NOV.ui.itemLbl = itemLbl
+	U.button(T.auto.page, "Ganti Item (putar daftar terdeteksi)", function()
+		local n = NOV.itemCycle()
+		if n and NOV.ui.itemLbl then NOV.ui.itemLbl.Text = "Item: " .. n end
+	end)
+	U.button(T.auto.page, "Scan Item (copy ke clipboard)", function()
+		NOV.itemDump()
+	end)
+	U.slider(T.auto.page, "Rate Pakai Item (detik)", 0.1, 5, CFG.UseItemRate, 2, function(v) CFG.UseItemRate = v end)
+	U.toggle(T.auto.page, "Auto Equip Item", "UseItemEquip", function(v) CFG.UseItemEquip = v end)
+
 	--======== COMBAT ========
 	U.section(T.combat.page, "Parry")
 	U.toggle(T.combat.page, "Auto Parry", "AutoParry", function(v) CFG.AutoParry = v end)
@@ -3768,6 +4240,7 @@ do
 	U.slider(T.move.page, "Stretch Amount", 0.3, 1.5, CFG.StretchAmount, 2, function(v) CFG.StretchAmount = v end)
 
 	--======== VISUAL ========
+	U.section(T.vis.page, "Layar")
 	U.toggle(T.vis.page, "Fullbright", "Fullbright", function(v) CFG.Fullbright = v; NOV.applyVisual() end)
 	U.toggle(T.vis.page, "No Fog", "NoFog", function(v) CFG.NoFog = v; NOV.applyVisual() end)
 	U.toggle(T.vis.page, "Anti Flash / Blind", "AntiFlash", function(v)
@@ -3912,6 +4385,20 @@ do
 	U.toggle(T.misc.page, "Streamer Mode (sensor nama)", "StreamerMode", function(v) NOV.streamerMode(v) end)
 	U.toggle(T.misc.page, "Skip Endscreen", "SkipEndscreen", function(v) NOV.skipEndscreen(v) end)
 	U.toggle(T.misc.page, "Korless Morph", "KorlessMorph", function(v) NOV.korless(v) end)
+	U.toggle(T.misc.page, "8 Bit Crown", "CrownOn", function(v) NOV.crown(v) end)
+	U.slider(T.misc.page, "Crown Scale", 0.3, 3, CFG.CrownScale, 2, function(v)
+		CFG.CrownScale = v
+		NOV.crownRefresh()
+	end)
+	U.slider(T.misc.page, "Crown Y Offset (stud)", -1, 2, CFG.CrownYOff, 2, function(v)
+		CFG.CrownYOff = v
+		NOV.crownRefresh()
+	end)
+	U.toggle(T.misc.page, "Crown VFX (api 8bit)", "CrownVfx", function(v)
+		CFG.CrownVfx = v
+		NOV.crownRefresh()
+	end)
+	U.button(T.misc.page, "Crown: Tempel Ulang", function() NOV.crownRefresh() end)
 	U.button(T.misc.page, "Copy Avatar (pemain terdekat)", function()
 		local hrp = NOV.hrp()
 		local best, bd
@@ -3947,13 +4434,19 @@ do
 		NOV.msg("Remote di-resolve ulang.")
 	end)
 	U.section(T.misc.page, "Info")
-	U.label(T.misc.page, "NOVA VD v2.2 · engine UI sendiri (tanpa Rayfield)\n"
+	U.label(T.misc.page, "NOVA VD v2.6 · engine UI sendiri (tanpa Rayfield)\n"
 		.. "Place: " .. tostring(game.PlaceId) .. "\n"
 		.. "Hotkey: " .. tostring(CFG.Keybind):gsub("Enum.KeyCode.", "") .. " untuk show/hide\n"
 		.. "Kalau window ketutup di HP: tekan tombol NOVA di kiri atas.", NOV.ui.colors.dim)
 
+	-- buka tab pertama: tanpa ini panel kebuka kosong sampai tab di-tap
+	if NOV.ui.tabs[1] and NOV.ui.tabs[1].activate then
+		pcall(NOV.ui.tabs[1].activate)
+	end
+
 	-- terapkan layout setelah semua tab jadi (biar tidak ada window kebesaran)
 	pcall(NOV.ui.applyResponsive)
+	pcall(NOV.ui.stickyTick)
 end
 
 --===================== [ 14. ESP RENDER LOOP ] ============================
@@ -4200,6 +4693,10 @@ do
 		end
 
 		pcall(NOV.genStatusTick)
+		if now - (NOV.state.lastSticky or 0) >= 0.05 then
+			NOV.state.lastSticky = now
+			pcall(NOV.ui.stickyTick)
+		end
 		pcall(NOV.overlayTick)
 		pcall(NOV.autoSkill)
 
@@ -4221,6 +4718,7 @@ do
 			pcall(NOV.killerUtilStep)
 			pcall(NOV.quickRecoveryStep)
 			pcall(NOV.fastBandageStep)
+			pcall(NOV.useItemStep)
 			pcall(NOV.autoStalkStep)
 			pcall(NOV.autoRunStep)
 			pcall(NOV.zoomStep)
@@ -4266,6 +4764,10 @@ do
 			if CFG.KorlessMorph then
 				task.wait(0.5)
 				NOV.korless(true)
+			end
+			if CFG.CrownOn then
+				task.wait(0.5)
+				NOV.crownBuild(lp)
 			end
 			if CFG.SelfHighlight then
 				local hl = char:FindFirstChild("NOVA_Self")
@@ -4331,9 +4833,9 @@ task.spawn(function()
 	-- visual & FOV sengaja TIDAK diterapkan saat load (semua fitur default OFF,
 	-- jadi script tidak mengubah apa pun sampai kamu menyalakan togglenya)
 	NOV.ui.setStatus(string.format("remote: %d", NOV.remotes.count()))
-	NOV.ui.notify("NOVA VD v2.2 loaded", 4)
+	NOV.ui.notify("NOVA VD v2.6 loaded", 4)
 	task.wait(0.4)
 	NOV.ui.notify("Hotkey " .. tostring(CFG.Keybind):gsub("Enum.KeyCode.", "") .. " · Self Test di tab Main", 4)
 end)
 
-print("[NOVA VD] v2.2 loaded. Remote terdeteksi: " .. tostring(NOV.remotes.count()))
+print("[NOVA VD] v2.6 loaded. Remote terdeteksi: " .. tostring(NOV.remotes.count()))
